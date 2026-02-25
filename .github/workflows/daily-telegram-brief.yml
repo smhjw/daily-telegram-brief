@@ -2,10 +2,10 @@ name: Daily Telegram Brief
 
 on:
   schedule:
-    # 01:35 UTC = 北京时间 09:35
+    # 01:35 UTC = 09:35 Asia/Shanghai
     - cron: '35 1 * * *'
-    # 13:00 UTC = 北京时间 21:00
-    - cron: '0 13 * * *'
+    # 13:03 UTC = 21:03 Asia/Shanghai (avoid minute-0 peak delays)
+    - cron: '3 13 * * *'
   workflow_dispatch:
 
 jobs:
