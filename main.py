@@ -61,6 +61,27 @@ def read_bool_env(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def configure_console_encoding() -> None:
+    # Prevent UnicodeEncodeError on some Windows terminals when output contains emoji.
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def to_bulleted_lines(raw_lines: list[str]) -> list[str]:
+    formatted: list[str] = []
+    for raw in raw_lines:
+        text = raw.strip()
+        if text.startswith("- "):
+            text = text[2:]
+        formatted.append(f"• {text}")
+    return formatted
+
+
 def request_json(url: str, *, params: Optional[dict] = None, timeout: int = 20) -> dict:
     response = requests.get(
         url,
@@ -390,28 +411,28 @@ def build_report(
         now = dt.datetime.now(dt.timezone.utc)
 
     lines = [
-        "每日资讯推送",
-        f"时间: {now:%Y-%m-%d %H:%M} ({timezone})",
-        "",
-        "[天气]",
+        "🗞️ 每日资讯推送",
+        f"🕒 {now:%Y-%m-%d %H:%M} ({timezone})",
+        "━━━━━━━━━━━━",
+        "🌤️ 天气",
     ]
 
     try:
-        lines.append(fetch_weather(city_name, timezone, latitude, longitude))
+        lines.extend(to_bulleted_lines([fetch_weather(city_name, timezone, latitude, longitude)]))
     except Exception as exc:  # noqa: BLE001
-        lines.append(f"天气获取失败: {exc}")
+        lines.extend(to_bulleted_lines([f"天气获取失败: {exc}"]))
 
-    lines.extend(["", "[A股]"])
-    lines.extend(fetch_a_share_block(stock_codes))
+    lines.extend(["━━━━━━━━━━━━", "📈 A股"])
+    lines.extend(to_bulleted_lines(fetch_a_share_block(stock_codes)))
 
-    lines.extend(["", "[黄金]"])
+    lines.extend(["━━━━━━━━━━━━", "🥇 黄金"])
     try:
-        lines.extend(build_gold_block(gold_holding_grams, gold_total_cost_cny, gold_cost_per_gram_cny))
+        lines.extend(to_bulleted_lines(build_gold_block(gold_holding_grams, gold_total_cost_cny, gold_cost_per_gram_cny)))
     except Exception as exc:  # noqa: BLE001
-        lines.append(f"黄金获取失败: {exc}")
+        lines.extend(to_bulleted_lines([f"黄金获取失败: {exc}"]))
 
-    lines.extend(["", "[加密货币]"])
-    lines.extend(fetch_crypto_block())
+    lines.extend(["━━━━━━━━━━━━", "🪙 加密货币"])
+    lines.extend(to_bulleted_lines(fetch_crypto_block()))
 
     return "\n".join(lines)
 
@@ -447,6 +468,7 @@ def parse_optional_float(value: str, name: str) -> Optional[float]:
 
 def main() -> int:
     try:
+        configure_console_encoding()
         dry_run = read_bool_env("DRY_RUN", default=False)
         bot_token = read_env("TELEGRAM_BOT_TOKEN", default="", required=not dry_run)
         chat_id = read_env("TELEGRAM_CHAT_ID", default="", required=not dry_run)
