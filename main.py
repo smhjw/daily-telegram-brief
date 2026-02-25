@@ -10,9 +10,14 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 USER_AGENT = "daily-telegram-brief/1.0"
 TROY_OUNCE_TO_GRAM = 31.1034768
+HTTP_RETRY_TOTAL = 3
+HTTP_BACKOFF_FACTOR = 0.8
+RETRY_STATUS_CODES = (429, 500, 502, 503, 504)
 WEATHER_CODE_MAP = {
     0: "晴",
     1: "大部晴",
@@ -43,6 +48,26 @@ WEATHER_CODE_MAP = {
     96: "雷雨伴小冰雹",
     99: "雷雨伴大冰雹",
 }
+
+
+def create_http_session() -> requests.Session:
+    retry = Retry(
+        total=HTTP_RETRY_TOTAL,
+        connect=HTTP_RETRY_TOTAL,
+        read=HTTP_RETRY_TOTAL,
+        backoff_factor=HTTP_BACKOFF_FACTOR,
+        status_forcelist=RETRY_STATUS_CODES,
+        allowed_methods=frozenset({"GET", "POST"}),
+        respect_retry_after_header=True,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session = requests.Session()
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+HTTP_SESSION = create_http_session()
 
 
 def read_env(name: str, default: Optional[str] = None, required: bool = False) -> str:
@@ -83,7 +108,7 @@ def to_bulleted_lines(raw_lines: list[str]) -> list[str]:
 
 
 def request_json(url: str, *, params: Optional[dict] = None, timeout: int = 20) -> dict:
-    response = requests.get(
+    response = HTTP_SESSION.get(
         url,
         params=params,
         timeout=timeout,
@@ -345,7 +370,7 @@ def fetch_gold_usd_per_oz() -> tuple[float, Optional[float], str]:
 
     # Fallback source: stooq XAUUSD csv quote
     try:
-        response = requests.get(
+        response = HTTP_SESSION.get(
             "https://stooq.com/q/l/?s=xauusd&i=d",
             timeout=10,
             headers={"User-Agent": USER_AGENT},
@@ -439,7 +464,7 @@ def build_report(
 
 def send_telegram_message(bot_token: str, chat_id: str, text: str) -> None:
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    response = requests.post(
+    response = HTTP_SESSION.post(
         url,
         json={
             "chat_id": chat_id,

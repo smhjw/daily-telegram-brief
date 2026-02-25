@@ -13,7 +13,6 @@ from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
 
 import main as core
-import requests
 
 
 def configure_console_encoding() -> None:
@@ -91,7 +90,7 @@ def clean_weather_line(raw: str) -> str:
 
 def send_wechat_serverchan(sendkey: str, text: str, title: str = "每日资讯推送") -> None:
     url = f"https://sctapi.ftqq.com/{sendkey}.send"
-    response = requests.post(
+    response = core.HTTP_SESSION.post(
         url,
         data={
             "title": title,
@@ -272,7 +271,7 @@ def sign_dingtalk_url(webhook: str, secret: str) -> str:
 
 def send_dingtalk_robot(webhook: str, markdown_text: str, title: str, secret: str = "") -> None:
     url = sign_dingtalk_url(webhook, secret) if secret else webhook
-    response = requests.post(
+    response = core.HTTP_SESSION.post(
         url,
         json={
             "msgtype": "markdown",
@@ -343,6 +342,7 @@ def main() -> int:
         configure_console_encoding()
 
         dry_run = core.read_bool_env("DRY_RUN", default=False)
+        fail_on_partial_error = core.read_bool_env("FAIL_ON_PARTIAL_ERROR", default=True)
         bot_token = core.read_env("TELEGRAM_BOT_TOKEN", default="")
         chat_id = core.read_env("TELEGRAM_CHAT_ID", default="")
         wechat_sendkey = core.read_env("WECHAT_SENDKEY", default="")
@@ -355,8 +355,8 @@ def main() -> int:
             has_dingtalk = bool(dingtalk_webhook)
             if not (has_telegram or has_wechat or has_dingtalk):
                 raise ValueError(
-                    "未配置可用推送通道。请至少配置 Telegram(TELEGRAM_BOT_TOKEN+TELEGRAM_CHAT_ID)、"
-                    "WECHAT_SENDKEY 或 DINGTALK_WEBHOOK 之一。"
+                    "No push channel configured. Configure Telegram (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID), "
+                    "WECHAT_SENDKEY, or DINGTALK_WEBHOOK."
                 )
 
         city_name = core.read_env("CITY_NAME", default="Shanghai")
@@ -383,37 +383,46 @@ def main() -> int:
         print(report)
         if not dry_run:
             errors: list[str] = []
+            succeeded_channels = 0
+
             if bot_token and chat_id:
                 try:
                     core.send_telegram_message(bot_token, chat_id, report)
+                    succeeded_channels += 1
                 except Exception as exc:
-                    errors.append(f"Telegram发送失败: {exc}")
+                    errors.append(f"Telegram send failed: {exc}")
             elif bot_token or chat_id:
-                errors.append("Telegram配置不完整: 需要同时配置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID")
+                errors.append(
+                    "Telegram config is incomplete. Both TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required."
+                )
 
             if wechat_sendkey:
                 try:
                     wechat_markdown = build_wechat_markdown_from_telegram(report)
                     send_wechat_serverchan(wechat_sendkey, wechat_markdown)
+                    succeeded_channels += 1
                 except Exception as exc:
-                    errors.append(f"微信发送失败: {exc}")
+                    errors.append(f"WeChat send failed: {exc}")
 
             if dingtalk_webhook:
                 try:
                     ding_title, ding_markdown = build_dingtalk_markdown_from_telegram(report)
                     send_dingtalk_robot(dingtalk_webhook, ding_markdown, ding_title, dingtalk_secret)
+                    succeeded_channels += 1
                 except Exception as exc:
-                    errors.append(f"钉钉发送失败: {exc}")
+                    errors.append(f"DingTalk send failed: {exc}")
 
             if errors:
-                raise RuntimeError("；".join(errors))
+                error_message = "; ".join(errors)
+                if fail_on_partial_error or succeeded_channels == 0:
+                    raise RuntimeError(error_message)
+                print(f"Partial channel failures: {error_message}", file=sys.stderr)
         else:
             print("DRY_RUN=true, skipped Telegram/WeChat/DingTalk send.")
         return 0
     except Exception as exc:
-        print(f"执行失败: {exc}", file=sys.stderr)
+        print(f"Execution failed: {exc}", file=sys.stderr)
         return 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

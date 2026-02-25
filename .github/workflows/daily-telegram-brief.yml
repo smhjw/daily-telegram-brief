@@ -8,6 +8,10 @@ on:
     - cron: '3 13 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: daily-telegram-brief-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   send-brief:
     runs-on: ubuntu-latest
@@ -43,4 +47,5 @@ jobs:
           GOLD_COST_PER_GRAM_CNY: ${{ vars.GOLD_COST_PER_GRAM_CNY }}
           TIMEZONE: ${{ vars.TIMEZONE }}
           DRY_RUN: ${{ vars.DRY_RUN }}
+          FAIL_ON_PARTIAL_ERROR: ${{ vars.FAIL_ON_PARTIAL_ERROR }}
         run: python main_telegram.py
