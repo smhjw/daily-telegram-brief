@@ -188,20 +188,71 @@ def build_dingtalk_markdown_from_telegram(telegram_text: str) -> tuple[str, str]
         if line.startswith("• ") and current_section:
             sections[current_section].append(line[2:].strip())
 
-    title = "每日资讯推送"
-    out: list[str] = [f"### {title}"]
-    if timestamp:
-        out.append(f"> {timestamp}")
+    def fmt_item(section_name: str, item: str) -> str:
+        text = item.strip()
+        text = text.replace(":", "：", 1)
+        text = re.sub(r"：\s*", "：", text, count=1)
 
+        if section_name == "天气":
+            m = re.match(
+                r"^(.*?)：\s*(.*?)\s*([0-9.]+°C)\s*体感([0-9.]+°C)\s*高/低\s*([0-9.]+)/([0-9.]+)°C$",
+                text,
+            )
+            if m:
+                city, weather, temp, feels, high, low = m.groups()
+                return f"- {city}：{weather} **{temp}**（体感{feels}） 高/低 {high}/{low}°C"
+            return f"- {text}"
+
+        if section_name == "黄金":
+            if text.startswith("金价："):
+                return f"- 金价：**{text.split('：', 1)[1].strip()}**"
+            if text.startswith("持仓："):
+                return f"- 持仓：**{text.split('：', 1)[1].strip()}**"
+            if text.startswith("当前总价："):
+                return f"- 当前总价：**{text.split('：', 1)[1].strip()}**"
+            if text.startswith("总成本："):
+                return f"- 总成本：{text.split('：', 1)[1].strip()}"
+            if text.startswith("盈亏："):
+                m = re.match(r"^盈亏：\s*([+-][^（(]+)\s*[（(]([+-]?[0-9.]+%)[）)]$", text)
+                if m:
+                    pnl_value, pnl_pct = m.groups()
+                    icon = "🟢" if pnl_value.startswith("+") else "🔴"
+                    return f"- {icon} 盈亏：**{pnl_value.strip()}**（{pnl_pct}）"
+            return f"- {text}"
+
+        if section_name == "加密货币":
+            text = re.sub(r"\(\s*([+-]?[0-9.]+%)\s*/\s*24h\s*\)", r"（24h \1）", text)
+            text = re.sub(r"\(([^()]+)\)", r"（\1）", text)
+            text = re.sub(r"\s+（", "（", text)
+            return f"- {text}"
+
+        if section_name == "A股":
+            text = re.sub(r"\(([+-]?[0-9.]+%)\)", r"（\1）", text)
+            text = re.sub(r"\s+（", "（", text)
+            return f"- {text}"
+
+        return f"- {text}"
+
+    title = "每日资讯推送"
+    out: list[str] = [f"## 🗞️ {title}"]
+    if timestamp:
+        out.append(f"> ⏰ {timestamp}")
+
+    section_title = {
+        "天气": "🌤️ 天气",
+        "黄金": "🥇 黄金",
+        "加密货币": "🪙 加密货币",
+        "A股": "📈 A股",
+    }
     for section_name in ["天气", "黄金", "加密货币", "A股"]:
         out.append("")
-        out.append(f"**{section_name}**")
+        out.append(f"### {section_title[section_name]}")
         items = sections.get(section_name, [])
         if not items:
             out.append("- 暂无数据")
             continue
         for item in items:
-            out.append(f"- {item}")
+            out.append(fmt_item(section_name, item))
 
     return title, "\n".join(out)
 
