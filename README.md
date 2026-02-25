@@ -3,7 +3,7 @@
 每天自动推送以下信息到 Telegram：
 - 天气温度
 - A 股行情
-- 比特币价格
+- BTC / ETH 价格
 
 ## 1. 准备 Telegram Bot
 
@@ -26,8 +26,9 @@
 - `CITY_NAME`：城市名，默认 `Shanghai`
 - `WEATHER_LATITUDE`：纬度（可选，填了可跳过城市地理解析）
 - `WEATHER_LONGITUDE`：经度（可选）
-- `A_STOCK_CODES`：股票列表，默认 `600519,000001,300750`
+- `A_STOCK_CODES`：股票列表，默认 `600519,002605,sh000001`
   - 支持格式：`600519` 或 `sh600519` / `sz000001`
+  - 示例中对应：贵州茅台、姚记科技、上证指数（`sh000001`）
 - `TIMEZONE`：默认 `Asia/Shanghai`
 - `DRY_RUN`：`true` 时只打印结果，不发送 Telegram（默认 `false`）
 
@@ -55,4 +56,4 @@ python main.py
 
 - 天气：Open-Meteo
 - A 股：东方财富公开行情接口
-- BTC：CoinGecko（失败时自动回退 Binance / Gate.io）
+- 加密货币（BTC/ETH）：CoinGecko（失败时自动回退 Binance / Gate.io）

@@ -207,56 +207,52 @@ def fetch_a_share_block(raw_codes: str) -> list[str]:
     return lines
 
 
-def fetch_btc_line() -> str:
+def format_change_text(change: Optional[float]) -> str:
+    if change is None:
+        return ""
+    sign = "+" if change > 0 else ""
+    return f" ({sign}{change:.2f}% / 24h)"
+
+
+def fetch_crypto_line(name: str, coingecko_id: str, binance_symbol: str, gateio_pair: str) -> str:
     try:
         payload = request_json(
             "https://api.coingecko.com/api/v3/simple/price",
             params={
-                "ids": "bitcoin",
+                "ids": coingecko_id,
                 "vs_currencies": "usd,cny",
                 "include_24hr_change": "true",
             },
             timeout=10,
         )
-        btc = payload.get("bitcoin") or {}
+        coin = payload.get(coingecko_id) or {}
 
-        usd = to_float(btc.get("usd"))
-        cny = to_float(btc.get("cny"))
-        change = to_float(btc.get("usd_24h_change"))
-
+        usd = to_float(coin.get("usd"))
+        cny = to_float(coin.get("cny"))
+        change = to_float(coin.get("usd_24h_change"))
         if usd is None:
             raise RuntimeError("CoinGecko 返回空价格")
 
-        change_text = ""
-        if change is not None:
-            sign = "+" if change > 0 else ""
-            change_text = f" ({sign}{change:.2f}% / 24h)"
-
         if cny is not None:
-            return f"BTC: ${usd:,.2f} | ¥{cny:,.2f}{change_text}"
-        return f"BTC: ${usd:,.2f}{change_text}"
+            return f"{name}: ${usd:,.2f} | ¥{cny:,.2f}{format_change_text(change)}"
+        return f"{name}: ${usd:,.2f}{format_change_text(change)}"
     except Exception as first_exc:  # noqa: BLE001
         try:
             payload = request_json(
                 "https://api.binance.com/api/v3/ticker/24hr",
-                params={"symbol": "BTCUSDT"},
+                params={"symbol": binance_symbol},
                 timeout=8,
             )
             usd = to_float(payload.get("lastPrice"))
             change = to_float(payload.get("priceChangePercent"))
             if usd is None:
                 raise RuntimeError("Binance 返回空价格")
-
-            change_text = ""
-            if change is not None:
-                sign = "+" if change > 0 else ""
-                change_text = f" ({sign}{change:.2f}% / 24h)"
-            return f"BTC: ${usd:,.2f}{change_text} (Binance)"
+            return f"{name}: ${usd:,.2f}{format_change_text(change)} (Binance)"
         except Exception as second_exc:  # noqa: BLE001
             try:
                 payload = request_json(
                     "https://api.gateio.ws/api/v4/spot/tickers",
-                    params={"currency_pair": "BTC_USDT"},
+                    params={"currency_pair": gateio_pair},
                     timeout=8,
                 )
                 if not isinstance(payload, list) or not payload:
@@ -266,16 +262,25 @@ def fetch_btc_line() -> str:
                 change = to_float(ticker.get("change_percentage"))
                 if usd is None:
                     raise RuntimeError("Gate.io 返回空价格")
-
-                change_text = ""
-                if change is not None:
-                    sign = "+" if change > 0 else ""
-                    change_text = f" ({sign}{change:.2f}% / 24h)"
-                return f"BTC: ${usd:,.2f}{change_text} (Gate.io)"
+                return f"{name}: ${usd:,.2f}{format_change_text(change)} (Gate.io)"
             except Exception as third_exc:  # noqa: BLE001
                 raise RuntimeError(
                     f"CoinGecko失败: {first_exc}; Binance失败: {second_exc}; Gate.io失败: {third_exc}"
                 ) from third_exc
+
+
+def fetch_crypto_block() -> list[str]:
+    lines: list[str] = []
+    crypto_targets = [
+        ("BTC", "bitcoin", "BTCUSDT", "BTC_USDT"),
+        ("ETH", "ethereum", "ETHUSDT", "ETH_USDT"),
+    ]
+    for name, coingecko_id, binance_symbol, gateio_pair in crypto_targets:
+        try:
+            lines.append(fetch_crypto_line(name, coingecko_id, binance_symbol, gateio_pair))
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"{name} 获取失败: {exc}")
+    return lines
 
 
 def build_report(
@@ -306,11 +311,8 @@ def build_report(
     lines.extend(["", "[A股]"])
     lines.extend(fetch_a_share_block(stock_codes))
 
-    lines.extend(["", "[比特币]"])
-    try:
-        lines.append(fetch_btc_line())
-    except Exception as exc:  # noqa: BLE001
-        lines.append(f"BTC 获取失败: {exc}")
+    lines.extend(["", "[加密货币]"])
+    lines.extend(fetch_crypto_block())
 
     return "\n".join(lines)
 
@@ -352,7 +354,7 @@ def main() -> int:
 
         city_name = read_env("CITY_NAME", default="Shanghai")
         timezone = read_env("TIMEZONE", default="Asia/Shanghai")
-        stock_codes = read_env("A_STOCK_CODES", default="600519,000001,300750")
+        stock_codes = read_env("A_STOCK_CODES", default="600519,002605,sh000001")
 
         latitude = parse_optional_float(read_env("WEATHER_LATITUDE", default=""), "WEATHER_LATITUDE")
         longitude = parse_optional_float(read_env("WEATHER_LONGITUDE", default=""), "WEATHER_LONGITUDE")
