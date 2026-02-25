@@ -40,4 +40,4 @@ jobs:
           GOLD_COST_PER_GRAM_CNY: ${{ vars.GOLD_COST_PER_GRAM_CNY }}
           TIMEZONE: ${{ vars.TIMEZONE }}
           DRY_RUN: ${{ vars.DRY_RUN }}
-        run: python main.py
+        run: python main_telegram.py
