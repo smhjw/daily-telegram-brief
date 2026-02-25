@@ -8,6 +8,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 import main as core
+import requests
 
 
 def configure_console_encoding() -> None:
@@ -83,6 +84,24 @@ def clean_weather_line(raw: str) -> str:
     return f"• {text}"
 
 
+def send_wechat_serverchan(sendkey: str, text: str, title: str = "每日资讯推送") -> None:
+    url = f"https://sctapi.ftqq.com/{sendkey}.send"
+    response = requests.post(
+        url,
+        data={
+            "title": title,
+            "desp": text,
+        },
+        timeout=20,
+        headers={"User-Agent": core.USER_AGENT},
+    )
+    response.raise_for_status()
+
+    payload = response.json()
+    if payload.get("code") != 0:
+        raise RuntimeError(f"Server酱 API error: {payload.get('message', 'unknown error')}")
+
+
 def build_report(
     city_name: str,
     timezone: str,
@@ -137,6 +156,7 @@ def main() -> int:
         dry_run = core.read_bool_env("DRY_RUN", default=False)
         bot_token = core.read_env("TELEGRAM_BOT_TOKEN", default="", required=not dry_run)
         chat_id = core.read_env("TELEGRAM_CHAT_ID", default="", required=not dry_run)
+        wechat_sendkey = core.read_env("WECHAT_SENDKEY", default="")
 
         city_name = core.read_env("CITY_NAME", default="Shanghai")
         timezone = core.read_env("TIMEZONE", default="Asia/Shanghai")
@@ -161,9 +181,22 @@ def main() -> int:
 
         print(report)
         if not dry_run:
-            core.send_telegram_message(bot_token, chat_id, report)
+            errors: list[str] = []
+            try:
+                core.send_telegram_message(bot_token, chat_id, report)
+            except Exception as exc:
+                errors.append(f"Telegram发送失败: {exc}")
+
+            if wechat_sendkey:
+                try:
+                    send_wechat_serverchan(wechat_sendkey, report)
+                except Exception as exc:
+                    errors.append(f"微信发送失败: {exc}")
+
+            if errors:
+                raise RuntimeError("；".join(errors))
         else:
-            print("DRY_RUN=true, skipped Telegram send.")
+            print("DRY_RUN=true, skipped Telegram/WeChat send.")
         return 0
     except Exception as exc:
         print(f"执行失败: {exc}", file=sys.stderr)

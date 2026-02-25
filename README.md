@@ -1,6 +1,6 @@
-# Telegram Daily Brief (GitHub Actions)
+# Daily Brief (GitHub Actions)
 
-每天自动推送以下信息到 Telegram：
+每天自动推送以下信息到 Telegram（可选同时转发到个人微信）：
 - 天气温度
 - A 股行情
 - 黄金价格与持仓盈亏
@@ -23,6 +23,11 @@
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
 
+### Secrets（可选，用于个人微信）
+- `WECHAT_SENDKEY`：Server酱 SendKey（到 [sct.ftqq.com](https://sct.ftqq.com/) 获取）
+  - 配置后会把同一条消息额外推送到微信
+  - 不配置则仅推送 Telegram
+
 ### Variables（可选）
 - `CITY_NAME`：城市名，默认 `Shanghai`
 - `WEATHER_LATITUDE`：纬度（可选，填了可跳过城市地理解析）
@@ -34,7 +39,7 @@
 - `GOLD_TOTAL_COST_CNY`：黄金总成本（人民币，可选，优先使用）
 - `GOLD_COST_PER_GRAM_CNY`：黄金成本单价（人民币/克，可选）
 - `TIMEZONE`：默认 `Asia/Shanghai`
-- `DRY_RUN`：`true` 时只打印结果，不发送 Telegram（默认 `false`）
+- `DRY_RUN`：`true` 时只打印结果，不发送 Telegram/微信（默认 `false`）
 
 ## 3. 定时执行
 
@@ -52,10 +57,11 @@
 pip install -r requirements.txt
 set TELEGRAM_BOT_TOKEN=xxx
 set TELEGRAM_CHAT_ID=xxx
+set WECHAT_SENDKEY=xxx
 set GOLD_HOLDING_GRAMS=20
 set GOLD_TOTAL_COST_CNY=10800
 set DRY_RUN=true
-python main.py
+python main_telegram.py
 ```
 
 ## 5. 数据来源
@@ -64,3 +70,4 @@ python main.py
 - A 股：东方财富公开行情接口
 - 黄金：Gate.io XAUT/PAXG（失败时回退 Stooq XAUUSD）+ 汇率接口折算为 CNY/克
 - 加密货币（BTC/ETH）：CoinGecko（失败时自动回退 Binance / Gate.io）
+- 微信转发：Server酱
