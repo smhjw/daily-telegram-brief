@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 import datetime as dt
+import base64
+import hashlib
+import hmac
 import re
 import sys
+import time
 from typing import Optional
+from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
 
 import main as core
@@ -151,6 +156,90 @@ def build_wechat_markdown_from_telegram(telegram_text: str) -> str:
     return "\n".join(out)
 
 
+def build_dingtalk_markdown_from_telegram(telegram_text: str) -> tuple[str, str]:
+    lines = [line.strip() for line in telegram_text.splitlines() if line.strip()]
+    timestamp = ""
+    sections: dict[str, list[str]] = {
+        "天气": [],
+        "黄金": [],
+        "加密货币": [],
+        "A股": [],
+    }
+    current_section = ""
+
+    for line in lines:
+        if line.startswith("🕒 "):
+            timestamp = line[2:].strip()
+            continue
+        if line.startswith("🌤️ "):
+            current_section = "天气"
+            continue
+        if line.startswith("🥇 "):
+            current_section = "黄金"
+            continue
+        if line.startswith("🪙 "):
+            current_section = "加密货币"
+            continue
+        if line.startswith("📈 "):
+            current_section = "A股"
+            continue
+        if line.startswith("🗞️ ") or line.startswith("━━━━━━━━"):
+            continue
+        if line.startswith("• ") and current_section:
+            sections[current_section].append(line[2:].strip())
+
+    title = "每日资讯推送"
+    out: list[str] = [f"### {title}"]
+    if timestamp:
+        out.append(f"> {timestamp}")
+
+    for section_name in ["天气", "黄金", "加密货币", "A股"]:
+        out.append("")
+        out.append(f"**{section_name}**")
+        items = sections.get(section_name, [])
+        if not items:
+            out.append("- 暂无数据")
+            continue
+        for item in items:
+            out.append(f"- {item}")
+
+    return title, "\n".join(out)
+
+
+def sign_dingtalk_url(webhook: str, secret: str) -> str:
+    timestamp = str(int(time.time() * 1000))
+    string_to_sign = f"{timestamp}\n{secret}"
+    hmac_code = hmac.new(
+        secret.encode("utf-8"),
+        string_to_sign.encode("utf-8"),
+        digestmod=hashlib.sha256,
+    ).digest()
+    sign = quote_plus(base64.b64encode(hmac_code))
+    sep = "&" if "?" in webhook else "?"
+    return f"{webhook}{sep}timestamp={timestamp}&sign={sign}"
+
+
+def send_dingtalk_robot(webhook: str, markdown_text: str, title: str, secret: str = "") -> None:
+    url = sign_dingtalk_url(webhook, secret) if secret else webhook
+    response = requests.post(
+        url,
+        json={
+            "msgtype": "markdown",
+            "markdown": {
+                "title": title,
+                "text": markdown_text,
+            },
+        },
+        timeout=20,
+        headers={"User-Agent": core.USER_AGENT},
+    )
+    response.raise_for_status()
+
+    payload = response.json()
+    if payload.get("errcode") != 0:
+        raise RuntimeError(f"DingTalk API error: {payload.get('errmsg', 'unknown error')}")
+
+
 def build_report(
     city_name: str,
     timezone: str,
@@ -206,6 +295,8 @@ def main() -> int:
         bot_token = core.read_env("TELEGRAM_BOT_TOKEN", default="", required=not dry_run)
         chat_id = core.read_env("TELEGRAM_CHAT_ID", default="", required=not dry_run)
         wechat_sendkey = core.read_env("WECHAT_SENDKEY", default="")
+        dingtalk_webhook = core.read_env("DINGTALK_WEBHOOK", default="")
+        dingtalk_secret = core.read_env("DINGTALK_SECRET", default="")
 
         city_name = core.read_env("CITY_NAME", default="Shanghai")
         timezone = core.read_env("TIMEZONE", default="Asia/Shanghai")
@@ -243,10 +334,17 @@ def main() -> int:
                 except Exception as exc:
                     errors.append(f"微信发送失败: {exc}")
 
+            if dingtalk_webhook:
+                try:
+                    ding_title, ding_markdown = build_dingtalk_markdown_from_telegram(report)
+                    send_dingtalk_robot(dingtalk_webhook, ding_markdown, ding_title, dingtalk_secret)
+                except Exception as exc:
+                    errors.append(f"钉钉发送失败: {exc}")
+
             if errors:
                 raise RuntimeError("；".join(errors))
         else:
-            print("DRY_RUN=true, skipped Telegram/WeChat send.")
+            print("DRY_RUN=true, skipped Telegram/WeChat/DingTalk send.")
         return 0
     except Exception as exc:
         print(f"执行失败: {exc}", file=sys.stderr)

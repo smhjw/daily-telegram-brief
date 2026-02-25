@@ -1,6 +1,6 @@
 # Daily Brief (GitHub Actions)
 
-每天自动推送以下信息到 Telegram（可选同时转发到个人微信）：
+每天自动推送以下信息到 Telegram（可选同时转发到个人微信、钉钉）：
 - 天气温度
 - A 股行情
 - 黄金价格与持仓盈亏
@@ -28,6 +28,11 @@
   - 配置后会把同一条消息额外推送到微信
   - 不配置则仅推送 Telegram
 
+### Secrets（可选，用于钉钉机器人）
+- `DINGTALK_WEBHOOK`：钉钉自定义机器人 Webhook 完整地址
+- `DINGTALK_SECRET`：机器人加签密钥（如果你在钉钉安全设置里启用了“加签”，就必须配置）
+  - 不配置钉钉变量则不会发送钉钉
+
 ### Variables（可选）
 - `CITY_NAME`：城市名，默认 `Shanghai`
 - `WEATHER_LATITUDE`：纬度（可选，填了可跳过城市地理解析）
@@ -39,7 +44,7 @@
 - `GOLD_TOTAL_COST_CNY`：黄金总成本（人民币，可选，优先使用）
 - `GOLD_COST_PER_GRAM_CNY`：黄金成本单价（人民币/克，可选）
 - `TIMEZONE`：默认 `Asia/Shanghai`
-- `DRY_RUN`：`true` 时只打印结果，不发送 Telegram/微信（默认 `false`）
+- `DRY_RUN`：`true` 时只打印结果，不发送 Telegram/微信/钉钉（默认 `false`）
 
 ## 3. 定时执行
 
@@ -58,6 +63,8 @@ pip install -r requirements.txt
 set TELEGRAM_BOT_TOKEN=xxx
 set TELEGRAM_CHAT_ID=xxx
 set WECHAT_SENDKEY=xxx
+set DINGTALK_WEBHOOK=https://oapi.dingtalk.com/robot/send?access_token=xxx
+set DINGTALK_SECRET=SECxxx
 set GOLD_HOLDING_GRAMS=20
 set GOLD_TOTAL_COST_CNY=10800
 set DRY_RUN=true
@@ -71,3 +78,4 @@ python main_telegram.py
 - 黄金：Gate.io XAUT/PAXG（失败时回退 Stooq XAUUSD）+ 汇率接口折算为 CNY/克
 - 加密货币（BTC/ETH）：CoinGecko（失败时自动回退 Binance / Gate.io）
 - 微信转发：Server酱
+- 钉钉转发：钉钉自定义机器人

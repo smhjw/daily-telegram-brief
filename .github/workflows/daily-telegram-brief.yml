@@ -27,11 +27,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Send report to Telegram and WeChat
+      - name: Send report to Telegram / WeChat / DingTalk
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           WECHAT_SENDKEY: ${{ secrets.WECHAT_SENDKEY }}
+          DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
           CITY_NAME: ${{ vars.CITY_NAME }}
           WEATHER_LATITUDE: ${{ vars.WEATHER_LATITUDE }}
           WEATHER_LONGITUDE: ${{ vars.WEATHER_LONGITUDE }}
