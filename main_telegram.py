@@ -292,11 +292,21 @@ def main() -> int:
         configure_console_encoding()
 
         dry_run = core.read_bool_env("DRY_RUN", default=False)
-        bot_token = core.read_env("TELEGRAM_BOT_TOKEN", default="", required=not dry_run)
-        chat_id = core.read_env("TELEGRAM_CHAT_ID", default="", required=not dry_run)
+        bot_token = core.read_env("TELEGRAM_BOT_TOKEN", default="")
+        chat_id = core.read_env("TELEGRAM_CHAT_ID", default="")
         wechat_sendkey = core.read_env("WECHAT_SENDKEY", default="")
         dingtalk_webhook = core.read_env("DINGTALK_WEBHOOK", default="")
         dingtalk_secret = core.read_env("DINGTALK_SECRET", default="")
+
+        if not dry_run:
+            has_telegram = bool(bot_token and chat_id)
+            has_wechat = bool(wechat_sendkey)
+            has_dingtalk = bool(dingtalk_webhook)
+            if not (has_telegram or has_wechat or has_dingtalk):
+                raise ValueError(
+                    "未配置可用推送通道。请至少配置 Telegram(TELEGRAM_BOT_TOKEN+TELEGRAM_CHAT_ID)、"
+                    "WECHAT_SENDKEY 或 DINGTALK_WEBHOOK 之一。"
+                )
 
         city_name = core.read_env("CITY_NAME", default="Shanghai")
         timezone = core.read_env("TIMEZONE", default="Asia/Shanghai")
@@ -322,10 +332,13 @@ def main() -> int:
         print(report)
         if not dry_run:
             errors: list[str] = []
-            try:
-                core.send_telegram_message(bot_token, chat_id, report)
-            except Exception as exc:
-                errors.append(f"Telegram发送失败: {exc}")
+            if bot_token and chat_id:
+                try:
+                    core.send_telegram_message(bot_token, chat_id, report)
+                except Exception as exc:
+                    errors.append(f"Telegram发送失败: {exc}")
+            elif bot_token or chat_id:
+                errors.append("Telegram配置不完整: 需要同时配置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID")
 
             if wechat_sendkey:
                 try:

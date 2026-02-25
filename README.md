@@ -19,9 +19,10 @@
 
 把这个目录代码推到你的 GitHub 仓库后，配置：
 
-### Secrets（必须）
+### Secrets（可选，用于 Telegram）
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
+  - 需成对配置
 
 ### Secrets（可选，用于个人微信）
 - `WECHAT_SENDKEY`：Server酱 SendKey（到 [sct.ftqq.com](https://sct.ftqq.com/) 获取）
@@ -32,6 +33,8 @@
 - `DINGTALK_WEBHOOK`：钉钉自定义机器人 Webhook 完整地址
 - `DINGTALK_SECRET`：机器人加签密钥（如果你在钉钉安全设置里启用了“加签”，就必须配置）
   - 不配置钉钉变量则不会发送钉钉
+
+至少需要启用一个推送通道：Telegram / 微信 / 钉钉。
 
 ### Variables（可选）
 - `CITY_NAME`：城市名，默认 `Shanghai`
