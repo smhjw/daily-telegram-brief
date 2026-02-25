@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 USER_AGENT = "daily-telegram-brief/1.0"
+TROY_OUNCE_TO_GRAM = 31.1034768
 WEATHER_CODE_MAP = {
     0: "晴",
     1: "大部晴",
@@ -234,7 +235,7 @@ def fetch_crypto_line(name: str, coingecko_id: str, binance_symbol: str, gateio_
             raise RuntimeError("CoinGecko 返回空价格")
 
         if cny is not None:
-            return f"{name}: ${usd:,.2f} | ¥{cny:,.2f}{format_change_text(change)}"
+            return f"{name}: ${usd:,.2f} | CNY {cny:,.2f}{format_change_text(change)}"
         return f"{name}: ${usd:,.2f}{format_change_text(change)}"
     except Exception as first_exc:  # noqa: BLE001
         try:
@@ -283,12 +284,104 @@ def fetch_crypto_block() -> list[str]:
     return lines
 
 
+def fetch_usd_cny_rate() -> float:
+    payload = request_json(
+        "https://open.er-api.com/v6/latest/USD",
+        timeout=12,
+    )
+    if payload.get("result") != "success":
+        raise RuntimeError(f"汇率接口异常: {payload.get('error-type', 'unknown')}")
+    rate = to_float((payload.get("rates") or {}).get("CNY"))
+    if rate is None:
+        raise RuntimeError("汇率接口未返回 CNY")
+    return rate
+
+
+def fetch_gold_usd_per_oz() -> tuple[float, Optional[float], str]:
+    # Preferred source: tokenized gold spot proxies from Gate.io
+    gate_pairs = [
+        ("XAUT_USDT", "Gate.io XAUT"),
+        ("PAXG_USDT", "Gate.io PAXG"),
+    ]
+    gate_errors: list[str] = []
+    for pair, source_name in gate_pairs:
+        try:
+            payload = request_json(
+                "https://api.gateio.ws/api/v4/spot/tickers",
+                params={"currency_pair": pair},
+                timeout=10,
+            )
+            if not isinstance(payload, list) or not payload:
+                raise RuntimeError("返回空数据")
+            ticker = payload[0]
+            usd = to_float(ticker.get("last"))
+            change = to_float(ticker.get("change_percentage"))
+            if usd is None:
+                raise RuntimeError("返回空价格")
+            return usd, change, source_name
+        except Exception as exc:  # noqa: BLE001
+            gate_errors.append(f"{pair}: {exc}")
+
+    # Fallback source: stooq XAUUSD csv quote
+    try:
+        response = requests.get(
+            "https://stooq.com/q/l/?s=xauusd&i=d",
+            timeout=10,
+            headers={"User-Agent": USER_AGENT},
+        )
+        response.raise_for_status()
+        parts = response.text.strip().split(",")
+        if len(parts) < 7:
+            raise RuntimeError("CSV 字段不足")
+        close_price = to_float(parts[6])
+        if close_price is None:
+            raise RuntimeError("解析收盘价失败")
+        return close_price, None, "Stooq XAUUSD"
+    except Exception as stooq_exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"Gate.io失败: {'; '.join(gate_errors)}; Stooq失败: {stooq_exc}"
+        ) from stooq_exc
+
+
+def build_gold_block(holding_grams: Optional[float], total_cost_cny: Optional[float], cost_per_gram_cny: Optional[float]) -> list[str]:
+    usd_per_oz, change_pct, source = fetch_gold_usd_per_oz()
+    usd_cny = fetch_usd_cny_rate()
+    cny_per_gram = usd_per_oz * usd_cny / TROY_OUNCE_TO_GRAM
+
+    lines = [f"金价: ${usd_per_oz:,.2f}/oz | CNY {cny_per_gram:,.2f}/g{format_change_text(change_pct)} ({source})"]
+
+    if holding_grams is None or holding_grams <= 0:
+        return lines
+
+    lines.append(f"持仓: {holding_grams:,.4f} g")
+    current_value = holding_grams * cny_per_gram
+    lines.append(f"当前总价: CNY {current_value:,.2f}")
+
+    effective_total_cost = total_cost_cny
+    if effective_total_cost is None and cost_per_gram_cny is not None:
+        effective_total_cost = holding_grams * cost_per_gram_cny
+
+    if effective_total_cost is not None and effective_total_cost > 0:
+        pnl = current_value - effective_total_cost
+        pnl_pct = pnl / effective_total_cost * 100
+        sign = "+" if pnl > 0 else ""
+        lines.append(f"总成本: CNY {effective_total_cost:,.2f}")
+        lines.append(f"盈亏: {sign}CNY {pnl:,.2f} ({sign}{pnl_pct:.2f}%)")
+    elif cost_per_gram_cny is not None and cost_per_gram_cny > 0:
+        lines.append(f"成本单价: CNY {cost_per_gram_cny:,.2f}/g")
+
+    return lines
+
+
 def build_report(
     city_name: str,
     timezone: str,
     latitude: Optional[float],
     longitude: Optional[float],
     stock_codes: str,
+    gold_holding_grams: Optional[float],
+    gold_total_cost_cny: Optional[float],
+    gold_cost_per_gram_cny: Optional[float],
 ) -> str:
     try:
         now = dt.datetime.now(ZoneInfo(timezone))
@@ -310,6 +403,12 @@ def build_report(
 
     lines.extend(["", "[A股]"])
     lines.extend(fetch_a_share_block(stock_codes))
+
+    lines.extend(["", "[黄金]"])
+    try:
+        lines.extend(build_gold_block(gold_holding_grams, gold_total_cost_cny, gold_cost_per_gram_cny))
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"黄金获取失败: {exc}")
 
     lines.extend(["", "[加密货币]"])
     lines.extend(fetch_crypto_block())
@@ -358,8 +457,20 @@ def main() -> int:
 
         latitude = parse_optional_float(read_env("WEATHER_LATITUDE", default=""), "WEATHER_LATITUDE")
         longitude = parse_optional_float(read_env("WEATHER_LONGITUDE", default=""), "WEATHER_LONGITUDE")
+        gold_holding_grams = parse_optional_float(read_env("GOLD_HOLDING_GRAMS", default=""), "GOLD_HOLDING_GRAMS")
+        gold_total_cost_cny = parse_optional_float(read_env("GOLD_TOTAL_COST_CNY", default=""), "GOLD_TOTAL_COST_CNY")
+        gold_cost_per_gram_cny = parse_optional_float(read_env("GOLD_COST_PER_GRAM_CNY", default=""), "GOLD_COST_PER_GRAM_CNY")
 
-        report = build_report(city_name, timezone, latitude, longitude, stock_codes)
+        report = build_report(
+            city_name,
+            timezone,
+            latitude,
+            longitude,
+            stock_codes,
+            gold_holding_grams,
+            gold_total_cost_cny,
+            gold_cost_per_gram_cny,
+        )
         print(report)
         if not dry_run:
             send_telegram_message(bot_token, chat_id, report)

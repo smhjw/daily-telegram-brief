@@ -2,7 +2,10 @@ name: Daily Telegram Brief
 
 on:
   schedule:
-    - cron: '0 23 * * *'
+    # 01:35 UTC = 北京时间 09:35
+    - cron: '35 1 * * *'
+    # 13:00 UTC = 北京时间 21:00
+    - cron: '0 13 * * *'
   workflow_dispatch:
 
 jobs:
@@ -32,6 +35,9 @@ jobs:
           WEATHER_LATITUDE: ${{ vars.WEATHER_LATITUDE }}
           WEATHER_LONGITUDE: ${{ vars.WEATHER_LONGITUDE }}
           A_STOCK_CODES: ${{ vars.A_STOCK_CODES }}
+          GOLD_HOLDING_GRAMS: ${{ vars.GOLD_HOLDING_GRAMS }}
+          GOLD_TOTAL_COST_CNY: ${{ vars.GOLD_TOTAL_COST_CNY }}
+          GOLD_COST_PER_GRAM_CNY: ${{ vars.GOLD_COST_PER_GRAM_CNY }}
           TIMEZONE: ${{ vars.TIMEZONE }}
           DRY_RUN: ${{ vars.DRY_RUN }}
         run: python main.py

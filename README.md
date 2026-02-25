@@ -3,6 +3,7 @@
 每天自动推送以下信息到 Telegram：
 - 天气温度
 - A 股行情
+- 黄金价格与持仓盈亏
 - BTC / ETH 价格
 
 ## 1. 准备 Telegram Bot
@@ -29,6 +30,9 @@
 - `A_STOCK_CODES`：股票列表，默认 `600519,002605,sh000001`
   - 支持格式：`600519` 或 `sh600519` / `sz000001`
   - 示例中对应：贵州茅台、姚记科技、上证指数（`sh000001`）
+- `GOLD_HOLDING_GRAMS`：持仓克数（可选）
+- `GOLD_TOTAL_COST_CNY`：黄金总成本（人民币，可选，优先使用）
+- `GOLD_COST_PER_GRAM_CNY`：黄金成本单价（人民币/克，可选）
 - `TIMEZONE`：默认 `Asia/Shanghai`
 - `DRY_RUN`：`true` 时只打印结果，不发送 Telegram（默认 `false`）
 
@@ -37,8 +41,8 @@
 工作流文件：`.github/workflows/daily-telegram-brief.yml`
 
 默认 cron：
-- `0 23 * * *`（UTC）
-- 对应北京时间每天 `07:00`
+- `35 1 * * *`（UTC）= 北京时间每天 `09:35`
+- `0 13 * * *`（UTC）= 北京时间每天 `21:00`
 
 你也可以在 GitHub Actions 页面手动点击 `Run workflow` 立即测试。
 
@@ -48,6 +52,8 @@
 pip install -r requirements.txt
 set TELEGRAM_BOT_TOKEN=xxx
 set TELEGRAM_CHAT_ID=xxx
+set GOLD_HOLDING_GRAMS=20
+set GOLD_TOTAL_COST_CNY=10800
 set DRY_RUN=true
 python main.py
 ```
@@ -56,4 +62,5 @@ python main.py
 
 - 天气：Open-Meteo
 - A 股：东方财富公开行情接口
+- 黄金：Gate.io XAUT/PAXG（失败时回退 Stooq XAUUSD）+ 汇率接口折算为 CNY/克
 - 加密货币（BTC/ETH）：CoinGecko（失败时自动回退 Binance / Gate.io）
