@@ -1,0 +1,37 @@
+name: Daily Telegram Brief
+
+on:
+  schedule:
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+
+jobs:
+  send-brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Send report to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CITY_NAME: ${{ vars.CITY_NAME }}
+          WEATHER_LATITUDE: ${{ vars.WEATHER_LATITUDE }}
+          WEATHER_LONGITUDE: ${{ vars.WEATHER_LONGITUDE }}
+          A_STOCK_CODES: ${{ vars.A_STOCK_CODES }}
+          TIMEZONE: ${{ vars.TIMEZONE }}
+          DRY_RUN: ${{ vars.DRY_RUN }}
+        run: python main.py
