@@ -102,6 +102,55 @@ def send_wechat_serverchan(sendkey: str, text: str, title: str = "每日资讯�
         raise RuntimeError(f"Server酱 API error: {payload.get('message', 'unknown error')}")
 
 
+def build_wechat_markdown_from_telegram(telegram_text: str) -> str:
+    lines = [line.strip() for line in telegram_text.splitlines() if line.strip()]
+    timestamp = ""
+    sections: dict[str, list[str]] = {
+        "天气": [],
+        "黄金": [],
+        "加密货币": [],
+        "A股": [],
+    }
+    current_section = ""
+
+    for line in lines:
+        if line.startswith("🕒 "):
+            timestamp = line[2:].strip()
+            continue
+        if line.startswith("🌤️ "):
+            current_section = "天气"
+            continue
+        if line.startswith("🥇 "):
+            current_section = "黄金"
+            continue
+        if line.startswith("🪙 "):
+            current_section = "加密货币"
+            continue
+        if line.startswith("📈 "):
+            current_section = "A股"
+            continue
+        if line.startswith("🗞️ ") or line.startswith("━━━━━━━━"):
+            continue
+        if line.startswith("• ") and current_section:
+            sections[current_section].append(line[2:].strip())
+
+    out: list[str] = ["## 每日资讯推送"]
+    if timestamp:
+        out.append(f"> {timestamp}")
+
+    for section_name in ["天气", "黄金", "加密货币", "A股"]:
+        out.append("")
+        out.append(f"### {section_name}")
+        items = sections.get(section_name, [])
+        if not items:
+            out.append("- 暂无数据")
+            continue
+        for item in items:
+            out.append(f"- {item}")
+
+    return "\n".join(out)
+
+
 def build_report(
     city_name: str,
     timezone: str,
@@ -189,7 +238,8 @@ def main() -> int:
 
             if wechat_sendkey:
                 try:
-                    send_wechat_serverchan(wechat_sendkey, report)
+                    wechat_markdown = build_wechat_markdown_from_telegram(report)
+                    send_wechat_serverchan(wechat_sendkey, wechat_markdown)
                 except Exception as exc:
                     errors.append(f"微信发送失败: {exc}")
 
