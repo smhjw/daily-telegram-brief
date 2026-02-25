@@ -69,6 +69,20 @@ def clean_crypto_line(raw: str) -> str:
     return f"• {text}"
 
 
+def clean_weather_line(raw: str) -> str:
+    text = raw.strip()
+    # core format example:
+    # Shanghai: 阴，当前 16.5°C，体感 16.3°C，最高/最低 19.0/12.1°C，风速 8.2 km/h
+    m = re.match(
+        r"^(.*?):\s*(.*?)，当前\s*([0-9.]+°C)，体感\s*([0-9.]+°C)，最高/最低\s*([0-9.]+)/([0-9.]+)°C(?:，风速.*)?$",
+        text,
+    )
+    if m:
+        city, weather, current, feels_like, high, low = m.groups()
+        return f"• {city}: {weather} {current} 体感{feels_like} 高/低 {high}/{low}°C"
+    return f"• {text}"
+
+
 def build_report(
     city_name: str,
     timezone: str,
@@ -94,13 +108,9 @@ def build_report(
 
     try:
         weather_line = core.fetch_weather(city_name, timezone, latitude, longitude)
-        lines.append(f"• {weather_line}")
+        lines.append(clean_weather_line(weather_line))
     except Exception as exc:
         lines.append(f"• 天气获取失败: {exc}")
-
-    lines.extend(["━━━━━━━━━━━━", "📈 A股"])
-    for stock_line in core.fetch_a_share_block(stock_codes):
-        lines.append(clean_stock_line(stock_line))
 
     lines.extend(["━━━━━━━━━━━━", "🥇 黄金"])
     try:
@@ -112,6 +122,10 @@ def build_report(
     lines.extend(["━━━━━━━━━━━━", "🪙 加密货币"])
     for crypto_line in core.fetch_crypto_block():
         lines.append(clean_crypto_line(crypto_line))
+
+    lines.extend(["━━━━━━━━━━━━", "📈 A股"])
+    for stock_line in core.fetch_a_share_block(stock_codes):
+        lines.append(clean_stock_line(stock_line))
 
     return "\n".join(lines)
 
