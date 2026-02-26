@@ -142,7 +142,8 @@ jobs:
 
       - name: Skip duplicate scheduled send
         if: steps.guard.outputs.should_send != 'true'
-        run: echo "Skipped send: ${{ steps.guard.outputs.reason }}"
+        run: |
+          echo "Skipped send: ${{ steps.guard.outputs.reason }}"
 
       - name: Send report to Telegram / WeChat / DingTalk
         if: steps.guard.outputs.should_send == 'true'
