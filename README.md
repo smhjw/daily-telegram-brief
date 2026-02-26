@@ -54,8 +54,8 @@
 工作流文件：`.github/workflows/daily-telegram-brief.yml`
 
 默认 cron：
-- `35 1 * * *`（UTC）= 北京时间每天 `09:35`
-- `0 13 * * *`（UTC）= 北京时间每天 `21:00`
+- `36 1 * * *`（UTC）= 北京时间每天 `09:36`
+- `48 12 * * *`（UTC）= 北京时间每天 `20:48`
 
 你也可以在 GitHub Actions 页面手动点击 `Run workflow` 立即测试。
 
