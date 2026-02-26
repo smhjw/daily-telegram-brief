@@ -1,11 +1,21 @@
 name: Daily Telegram Brief
 
+permissions:
+  contents: read
+  actions: read
+
 on:
   schedule:
-    # 01:36 UTC = 09:36 Asia/Shanghai
+    # Primary: 01:36 UTC = 09:36 Asia/Shanghai
     - cron: '36 1 * * *'
-    # 12:48 UTC = 20:48 Asia/Shanghai
+    # Fallbacks for morning (same day, deduped by guard step)
+    - cron: '46 1 * * *'
+    - cron: '56 1 * * *'
+    # Primary: 12:48 UTC = 20:48 Asia/Shanghai
     - cron: '48 12 * * *'
+    # Fallbacks for evening (same day, deduped by guard step)
+    - cron: '58 12 * * *'
+    - cron: '8 13 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -26,12 +36,116 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Guard against missed/duplicate schedule sends
+        id: guard
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          RUN_ID: ${{ github.run_id }}
+          TZ_NAME: ${{ vars.TIMEZONE }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, time
+          from urllib.request import Request, urlopen
+          from zoneinfo import ZoneInfo
+
+          def parse_iso_utc(raw: str) -> datetime:
+              return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+
+          def time_in_range(value: time, start: time, end: time) -> bool:
+              return start <= value <= end
+
+          event_name = os.environ.get("EVENT_NAME", "")
+          event_schedule = os.environ.get("EVENT_SCHEDULE", "")
+          run_id = int(os.environ.get("RUN_ID", "0"))
+          repo = os.environ["REPO"]
+          token = os.environ["GITHUB_TOKEN"]
+          tz_name = os.environ.get("TZ_NAME", "").strip() or "Asia/Shanghai"
+          tz = ZoneInfo(tz_name)
+          now_local = datetime.now(tz)
+
+          morning_crons = {"36 1 * * *", "46 1 * * *", "56 1 * * *"}
+          evening_crons = {"48 12 * * *", "58 12 * * *", "8 13 * * *"}
+
+          should_send = True
+          slot = "manual"
+          reason = "manual trigger"
+
+          if event_name == "schedule":
+              if event_schedule in morning_crons:
+                  slot = "morning"
+              elif event_schedule in evening_crons:
+                  slot = "evening"
+              else:
+                  slot = "unknown"
+
+              if slot in {"morning", "evening"}:
+                  req = Request(
+                      f"https://api.github.com/repos/{repo}/actions/workflows/daily-telegram-brief.yml/runs?event=schedule&per_page=50",
+                      headers={
+                          "Authorization": f"Bearer {token}",
+                          "Accept": "application/vnd.github+json",
+                          "User-Agent": "daily-telegram-brief-guard",
+                      },
+                  )
+                  with urlopen(req, timeout=20) as resp:
+                      payload = json.load(resp)
+
+                  duplicate_run = None
+                  for run in payload.get("workflow_runs", []):
+                      if int(run.get("id", 0)) == run_id:
+                          continue
+                      if run.get("status") != "completed" or run.get("conclusion") != "success":
+                          continue
+                      started_at = run.get("run_started_at")
+                      if not started_at:
+                          continue
+                      started_local = parse_iso_utc(started_at).astimezone(tz)
+                      if started_local.date() != now_local.date():
+                          continue
+
+                      t = started_local.time()
+                      if slot == "morning" and time_in_range(t, time(8, 30), time(12, 0)):
+                          duplicate_run = run
+                          break
+                      if slot == "evening" and time_in_range(t, time(19, 30), time(23, 0)):
+                          duplicate_run = run
+                          break
+
+                  if duplicate_run is not None:
+                      should_send = False
+                      reason = (
+                          f"already sent in {slot} slot by run "
+                          f"#{duplicate_run.get('run_number')} at {duplicate_run.get('run_started_at')}"
+                      )
+                  else:
+                      reason = f"{slot} slot not sent yet today, continue"
+              else:
+                  reason = f"unknown schedule '{event_schedule}', continue for safety"
+
+          print(f"guard: should_send={should_send} slot={slot} reason={reason}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"should_send={'true' if should_send else 'false'}\n")
+              out.write(f"slot={slot}\n")
+              out.write(f"reason={reason.replace(chr(10), ' ')}\n")
+          PY
+
       - name: Install dependencies
+        if: steps.guard.outputs.should_send == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Skip duplicate scheduled send
+        if: steps.guard.outputs.should_send != 'true'
+        run: echo "Skipped send: ${{ steps.guard.outputs.reason }}"
+
       - name: Send report to Telegram / WeChat / DingTalk
+        if: steps.guard.outputs.should_send == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
