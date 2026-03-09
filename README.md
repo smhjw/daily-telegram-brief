@@ -48,18 +48,32 @@
 - `GOLD_COST_PER_GRAM_CNY`：黄金成本单价（人民币/克，可选）
 - `TIMEZONE`：默认 `Asia/Shanghai`
 - `DRY_RUN`：`true` 时只打印结果，不发送 Telegram/微信/钉钉（默认 `false`）
+- `FAIL_ON_PARTIAL_ERROR`：默认 `true`
+  - `true` 时，只要任一数据源抓取失败，或任一推送渠道发送失败，任务就返回失败状态
+  - `false` 时，只要至少一个推送渠道成功，任务可继续返回成功，并在日志中打印部分失败信息
+
+### Workflow Variables（可选，用于定时策略）
+- `MORNING_BRIEF_TIME`：早报时间，默认 `09:36`
+- `EVENING_BRIEF_TIME`：晚报时间，默认 `22:00`
+- `SCHEDULE_WINDOW_MINUTES`：定时窗口分钟数，默认 `45`
+  - 工作流会在目标时间前后按 5 分钟轮询，并在窗口内只发送一次
+  - 这样可以降低 GitHub Actions 定时延迟导致的“错过固定时刻”问题
 
 ## 3. 定时执行
 
 工作流文件：`.github/workflows/daily-telegram-brief.yml`
 
-默认 cron：
-- `36 1 * * *`（UTC）= 北京时间每天 `09:36`
-- `0 14 * * *`（UTC）= 北京时间每天 `22:00`
+默认调度策略：
+- 围绕早报 `09:36`（北京时间）和晚报 `22:00`（北京时间），在目标时间前后按 5 分钟轮询
+- 默认轮询窗口：
+  - 早报：`01:35-02:25 UTC`
+  - 晚报：`14:00-14:45 UTC`
+- 工作流内部会根据 `MORNING_BRIEF_TIME`、`EVENING_BRIEF_TIME`、`SCHEDULE_WINDOW_MINUTES` 判断当前是否处于发送窗口
+- 同一时段内自动去重，只会发送一次
 
-防漏触发兜底（同一时段自动去重，只会发送一次）：
-- 早间兜底：`46 1 * * *`、`56 1 * * *`（UTC）
-- 晚间兜底：`10 14 * * *`、`20 14 * * *`（UTC）
+说明：
+- GitHub Actions 的 `schedule` 本身不保证精确到分钟
+- 当前实现通过“窗口轮询 + 去重守卫”提升准点率和稳定性
 
 你也可以在 GitHub Actions 页面手动点击 `Run workflow` 立即测试。
 
@@ -67,6 +81,7 @@
 
 ```bash
 pip install -r requirements.txt
+python -m unittest discover -s tests -p "test_*.py" -v
 set TELEGRAM_BOT_TOKEN=xxx
 set TELEGRAM_CHAT_ID=xxx
 set WECHAT_SENDKEY=xxx
@@ -75,7 +90,7 @@ set DINGTALK_SECRET=SECxxx
 set GOLD_HOLDING_GRAMS=20
 set GOLD_TOTAL_COST_CNY=10800
 set DRY_RUN=true
-python main_telegram.py
+python main.py
 ```
 
 ## 5. 数据来源
