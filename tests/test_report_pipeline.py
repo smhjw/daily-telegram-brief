@@ -139,8 +139,13 @@ class ReportPipelineTests(unittest.TestCase):
         self.assertIn("## 每日资讯推送", rendered)
         self.assertIn("时间：2026-03-09 09:36 (Asia/Shanghai)", rendered)
         self.assertIn("### A股", rendered)
+        self.assertIn("### 天气", rendered)
+        self.assertIn("- Shanghai | 晴", rendered)
+        self.assertIn("- 当前/体感 | 16.5°C / 16.3°C", rendered)
         self.assertIn("- 贵州茅台：1504.77 CNY | +2.59%", rendered)
-        self.assertIn("- 金价：CNY 672.15/g | 24h +0.50% | Gate.io XAUT", rendered)
+        self.assertIn("- 金价 | CNY 672.15/g | 24h +0.50%", rendered)
+        self.assertIn("- 来源 | Gate.io XAUT", rendered)
+        self.assertIn("- 市值/成本 | CNY 13,443.00 / CNY 10,800.00", rendered)
         self.assertIn("- BTC：$92,000.00 | 24h +1.23%", rendered)
 
 

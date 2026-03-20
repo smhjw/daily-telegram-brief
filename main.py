@@ -769,8 +769,11 @@ def build_dingtalk_markdown(report: ReportData) -> tuple[str, str]:
         normalized = re.sub(r"\s*\|\s*", " | ", normalized)
         return normalized
 
-    def fmt_weather(item: str) -> list[str]:
-        text = normalize_item(item)
+    def build_weather_card(items: list[str]) -> list[str]:
+        if not items:
+            return ["- 暂无数据"]
+
+        text = normalize_item(items[0])
         match = re.match(
             r"^(.*?)：(.*?)\s*\|\s*当前\s*([0-9.]+°C)\s*\|\s*体感\s*([0-9.]+°C)\s*\|\s*高/低\s*([0-9.]+)/([0-9.]+)°C(?:\s*\|\s*风速\s*([0-9.]+\s*km/h))?$",
             text,
@@ -779,10 +782,60 @@ def build_dingtalk_markdown(report: ReportData) -> tuple[str, str]:
             return [f"- {text}"]
 
         city, weather, temp, feels, high, low, wind = match.groups()
-        details = [f"当前/体感：{temp} / {feels}", f"高/低：{high}/{low}°C"]
+        lines = [
+            f"- {city} | {weather}",
+            f"- 当前/体感 | {temp} / {feels}",
+            f"- 高/低 | {high}/{low}°C",
+        ]
         if wind:
-            details.append(f"风速：{wind}")
-        return [f"- {city}：{weather}", f"- {' | '.join(details)}"]
+            lines[-1] = f"{lines[-1]} | 风速 {wind}"
+        return lines
+
+    def build_gold_card(items: list[str]) -> list[str]:
+        if not items:
+            return ["- 暂无数据"]
+
+        summary: dict[str, str] = {}
+        for item in items:
+            text = normalize_item(item)
+            if "：" not in text:
+                continue
+            key, value = text.split("：", 1)
+            summary[key.strip()] = value.strip()
+
+        lines: list[str] = []
+        price = summary.get("金价")
+        if price:
+            parts = [part.strip() for part in price.split("|")]
+            if len(parts) >= 3:
+                lines.append(f"- 金价 | {parts[0]} | {parts[1]}")
+                lines.append(f"- 来源 | {parts[2]}")
+            else:
+                lines.append(f"- 金价 | {price}")
+
+        holding = summary.get("持仓")
+        if holding:
+            lines.append(f"- 持仓 | {holding}")
+
+        market_value = summary.get("当前市值")
+        total_cost = summary.get("总成本")
+        if market_value and total_cost:
+            lines.append(f"- 市值/成本 | {market_value} / {total_cost}")
+        elif market_value:
+            lines.append(f"- 当前市值 | {market_value}")
+        elif total_cost:
+            lines.append(f"- 总成本 | {total_cost}")
+
+        pnl = summary.get("浮动盈亏")
+        if pnl:
+            lines.append(f"- 浮动盈亏 | {pnl}")
+
+        return lines or [f"- {normalize_item(item)}" for item in items]
+
+    def build_simple_card(items: list[str]) -> list[str]:
+        if not items:
+            return ["- 暂无数据"]
+        return [f"- {normalize_item(item)}" for item in items]
 
     title = report.title
     out: list[str] = [f"## {title}", "", f"时间：{report.generated_at:%Y-%m-%d %H:%M} ({report.timezone})"]
@@ -790,16 +843,13 @@ def build_dingtalk_markdown(report: ReportData) -> tuple[str, str]:
     for section in report.sections:
         out.append("")
         out.append(f"### {section.title}{SECTION_STATUS_SUFFIX.get(section.status, '')}")
-        out.append("")
         items = get_clean_section_items(section)
-        if not items:
-            out.append("- 暂无数据")
-            continue
-        for item in items:
-            if section.key == SECTION_WEATHER:
-                out.extend(fmt_weather(item))
-            else:
-                out.append(f"- {normalize_item(item)}")
+        if section.key == SECTION_WEATHER:
+            out.extend(build_weather_card(items))
+        elif section.key == SECTION_GOLD:
+            out.extend(build_gold_card(items))
+        else:
+            out.extend(build_simple_card(items))
 
     return title, "\n".join(out)
 
