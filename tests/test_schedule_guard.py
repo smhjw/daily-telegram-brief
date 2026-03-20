@@ -22,8 +22,8 @@ def make_run(run_id: int, run_number: int, local_dt: dt.datetime) -> dict:
 class ScheduleGuardTests(unittest.TestCase):
     def setUp(self) -> None:
         self.timezone = ZoneInfo("Asia/Shanghai")
-        self.morning_brief_time = schedule_guard.parse_hhmm("09:36", "09:36")
-        self.evening_brief_time = schedule_guard.parse_hhmm("22:00", "22:00")
+        self.morning_brief_time = schedule_guard.parse_hhmm("09:30", "09:30")
+        self.evening_brief_time = schedule_guard.parse_hhmm("20:30", "20:30")
 
     def evaluate(
         self,

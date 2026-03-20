@@ -6,11 +6,12 @@ permissions:
 
 on:
   schedule:
-    # Morning poll around 09:36 Asia/Shanghai (01:35-02:25 UTC, every 5 minutes)
-    - cron: '35-55/5 1 * * *'
-    - cron: '0-25/5 2 * * *'
-    # Evening poll around 22:00 Asia/Shanghai (14:00-14:45 UTC, every 5 minutes)
-    - cron: '0-45/5 14 * * *'
+    # Morning poll around 09:30 Asia/Shanghai (01:30-02:15 UTC, every 5 minutes)
+    - cron: '30-55/5 1 * * *'
+    - cron: '0-15/5 2 * * *'
+    # Evening poll around 20:30 Asia/Shanghai (12:30-13:15 UTC, every 5 minutes)
+    - cron: '30-55/5 12 * * *'
+    - cron: '0-15/5 13 * * *'
   workflow_dispatch:
 
 concurrency:

@@ -136,11 +136,12 @@ class ReportPipelineTests(unittest.TestCase):
         title, rendered = main.build_dingtalk_markdown(report)
 
         self.assertEqual(title, "每日资讯推送")
-        self.assertIn("## 🗞️ 每日资讯推送", rendered)
-        self.assertIn("### 📈 A股", rendered)
-        self.assertIn("- 贵州茅台：1504.77 CNY｜+2.59%", rendered)
-        self.assertIn("- 金价：**CNY 672.15/g｜24h +0.50%｜Gate.io XAUT**", rendered)
-        self.assertIn("- BTC：$92,000.00｜24h +1.23%", rendered)
+        self.assertIn("## 每日资讯推送", rendered)
+        self.assertIn("时间：2026-03-09 09:36 (Asia/Shanghai)", rendered)
+        self.assertIn("### A股", rendered)
+        self.assertIn("- 贵州茅台：1504.77 CNY | +2.59%", rendered)
+        self.assertIn("- 金价：CNY 672.15/g | 24h +0.50% | Gate.io XAUT", rendered)
+        self.assertIn("- BTC：$92,000.00 | 24h +1.23%", rendered)
 
 
 if __name__ == "__main__":

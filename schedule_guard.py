@@ -10,8 +10,8 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 DEFAULT_TIMEZONE = "Asia/Shanghai"
-DEFAULT_MORNING_BRIEF_TIME = "09:36"
-DEFAULT_EVENING_BRIEF_TIME = "22:00"
+DEFAULT_MORNING_BRIEF_TIME = "09:30"
+DEFAULT_EVENING_BRIEF_TIME = "20:30"
 DEFAULT_WORKFLOW_FILENAME = "daily-telegram-brief.yml"
 USER_AGENT = "daily-telegram-brief-guard/1.0"
 

@@ -763,69 +763,43 @@ def build_wechat_markdown(report: ReportData) -> str:
 
 
 def build_dingtalk_markdown(report: ReportData) -> tuple[str, str]:
-    def fmt_item(section_key: str, item: str) -> str:
-        text = item.strip()
-        text = text.replace(":", "：", 1)
-        text = re.sub(r"：\s*", "：", text, count=1)
+    def normalize_item(text: str) -> str:
+        normalized = text.strip().replace(":", "：", 1)
+        normalized = re.sub(r"：\s*", "：", normalized, count=1)
+        normalized = re.sub(r"\s*\|\s*", " | ", normalized)
+        return normalized
 
-        if section_key == SECTION_WEATHER:
-            match = re.match(
-                r"^(.*?)：\s*(.*?)\s*\|\s*当前\s*([0-9.]+°C)\s*\|\s*体感\s*([0-9.]+°C)\s*\|\s*高/低\s*([0-9.]+)/([0-9.]+)°C(?:\s*\|\s*风速\s*([0-9.]+\s*km/h))?$",
-                text,
-            )
-            if match:
-                city, weather, temp, feels, high, low, wind = match.groups()
-                parts = [f"- **{city}**：{weather}", f"当前/体感：**{temp} / {feels}**", f"高/低：**{high}/{low}°C**"]
-                if wind:
-                    parts.append(f"风速：**{wind}**")
-                return "｜".join(parts)
-            return f"- {text}"
+    def fmt_weather(item: str) -> list[str]:
+        text = normalize_item(item)
+        match = re.match(
+            r"^(.*?)：(.*?)\s*\|\s*当前\s*([0-9.]+°C)\s*\|\s*体感\s*([0-9.]+°C)\s*\|\s*高/低\s*([0-9.]+)/([0-9.]+)°C(?:\s*\|\s*风速\s*([0-9.]+\s*km/h))?$",
+            text,
+        )
+        if not match:
+            return [f"- {text}"]
 
-        if section_key == SECTION_GOLD:
-            if text.startswith("金价："):
-                value = text.split("：", 1)[1].strip().replace(" | ", "｜")
-                return f"- 金价：**{value}**"
-            if text.startswith("持仓："):
-                return f"- 持仓：**{text.split('：', 1)[1].strip()}**"
-            if text.startswith("当前市值："):
-                return f"- 当前市值：**{text.split('：', 1)[1].strip()}**"
-            if text.startswith("总成本："):
-                return f"- 总成本：{text.split('：', 1)[1].strip()}"
-            if text.startswith("浮动盈亏："):
-                match = re.match(r"^浮动盈亏：\s*([+-][^（(]+)\s*[（(]([+-]?[0-9.]+%)[）)]$", text)
-                if match:
-                    pnl_value, pnl_pct = match.groups()
-                    icon = "🟢" if pnl_value.startswith("+") else "🔴"
-                    return f"- {icon} 浮动盈亏：**{pnl_value.strip()}**（{pnl_pct}）"
-            return f"- {text}"
-
-        if section_key == SECTION_CRYPTO:
-            text = re.sub(r"\(\s*([+-]?[0-9.]+%)\s*/\s*24h\s*\)", r"（24h \1）", text)
-            text = re.sub(r"\(([^()]+)\)", r"（\1）", text)
-            text = re.sub(r"\s+（", "（", text)
-            text = text.replace(" | ", "｜")
-            return f"- {text}"
-
-        if section_key == SECTION_STOCK:
-            text = re.sub(r"\(([+-]?[0-9.]+%)\)", r"（\1）", text)
-            text = re.sub(r"\s+（", "（", text)
-            text = text.replace(" | ", "｜")
-            return f"- {text}"
-
-        return f"- {text}"
+        city, weather, temp, feels, high, low, wind = match.groups()
+        details = [f"当前/体感：{temp} / {feels}", f"高/低：{high}/{low}°C"]
+        if wind:
+            details.append(f"风速：{wind}")
+        return [f"- {city}：{weather}", f"- {' | '.join(details)}"]
 
     title = report.title
-    out: list[str] = [f"## 🗞️ {title}", f"> ⏰ {report.generated_at:%Y-%m-%d %H:%M} ({report.timezone})"]
+    out: list[str] = [f"## {title}", "", f"时间：{report.generated_at:%Y-%m-%d %H:%M} ({report.timezone})"]
 
     for section in report.sections:
         out.append("")
-        out.append(f"### {SECTION_ICONS.get(section.key, '•')} {section.title}{SECTION_STATUS_SUFFIX.get(section.status, '')}")
+        out.append(f"### {section.title}{SECTION_STATUS_SUFFIX.get(section.status, '')}")
+        out.append("")
         items = get_clean_section_items(section)
         if not items:
             out.append("- 暂无数据")
             continue
         for item in items:
-            out.append(fmt_item(section.key, item))
+            if section.key == SECTION_WEATHER:
+                out.extend(fmt_weather(item))
+            else:
+                out.append(f"- {normalize_item(item)}")
 
     return title, "\n".join(out)
 
