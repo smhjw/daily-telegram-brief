@@ -88,7 +88,7 @@ def create_http_session() -> requests.Session:
         read=HTTP_RETRY_TOTAL,
         backoff_factor=HTTP_BACKOFF_FACTOR,
         status_forcelist=RETRY_STATUS_CODES,
-        allowed_methods=frozenset({"GET", "POST"}),
+        allowed_methods=frozenset({"GET"}),
         respect_retry_after_header=True,
     )
     adapter = HTTPAdapter(max_retries=retry)
@@ -1001,20 +1001,16 @@ def main() -> int:
         data_errors = report.partial_errors()
 
         print(rendered_report)
+        if data_errors and config.fail_on_partial_error:
+            raise RuntimeError("; ".join(data_errors))
+
         if not config.dry_run:
             send_report_to_channels(config, report, rendered_report)
-            if data_errors:
-                error_message = "; ".join(data_errors)
-                if config.fail_on_partial_error:
-                    raise RuntimeError(error_message)
-                print(f"Partial data failures: {error_message}", file=sys.stderr)
         else:
             print("DRY_RUN=true, skipped Telegram/WeChat/DingTalk send.")
-            if data_errors:
-                error_message = "; ".join(data_errors)
-                if config.fail_on_partial_error:
-                    raise RuntimeError(error_message)
-                print(f"Partial data failures: {error_message}", file=sys.stderr)
+
+        if data_errors:
+            print(f"Partial data failures: {'; '.join(data_errors)}", file=sys.stderr)
         return 0
     except Exception as exc:  # noqa: BLE001
         print(f"执行失败: {exc}", file=sys.stderr)

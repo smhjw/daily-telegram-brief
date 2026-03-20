@@ -55,25 +55,25 @@
 ### Workflow Variables（可选，用于定时策略）
 - `MORNING_BRIEF_TIME`：早报时间，默认 `09:36`
 - `EVENING_BRIEF_TIME`：晚报时间，默认 `22:00`
-- `SCHEDULE_WINDOW_MINUTES`：定时窗口分钟数，默认 `45`
-  - 工作流会在目标时间前后按 5 分钟轮询，并在窗口内只发送一次
-  - 这样可以降低 GitHub Actions 定时延迟导致的“错过固定时刻”问题
+  - 同一天内，早报会在晚报开始前补发一次；晚报会在当天结束前补发一次
+  - 同一自然日、同一时段只会成功发送一次
 
 ## 3. 定时执行
 
 工作流文件：`.github/workflows/daily-telegram-brief.yml`
 
 默认调度策略：
-- 围绕早报 `09:36`（北京时间）和晚报 `22:00`（北京时间），在目标时间前后按 5 分钟轮询
-- 默认轮询窗口：
+- 围绕早报 `09:36`（北京时间）和晚报 `22:00`（北京时间），按 5 分钟轮询触发 GitHub Actions
+- 默认轮询区间：
   - 早报：`01:35-02:25 UTC`
   - 晚报：`14:00-14:45 UTC`
-- 工作流内部会根据 `MORNING_BRIEF_TIME`、`EVENING_BRIEF_TIME`、`SCHEDULE_WINDOW_MINUTES` 判断当前是否处于发送窗口
-- 同一时段内自动去重，只会发送一次
+- 工作流内部会根据 `MORNING_BRIEF_TIME`、`EVENING_BRIEF_TIME` 和 `TIMEZONE` 判断当前属于早报还是晚报时段
+- 如果 GitHub 调度晚到，当前时段会在同一天内自动补发
+- 同一自然日、同一时段自动去重，只会成功发送一次
 
 说明：
 - GitHub Actions 的 `schedule` 本身不保证精确到分钟
-- 当前实现通过“窗口轮询 + 去重守卫”提升准点率和稳定性
+- 当前实现通过“轮询触发 + 时段补发 + 去重守卫”提升稳定性
 
 你也可以在 GitHub Actions 页面手动点击 `Run workflow` 立即测试。
 

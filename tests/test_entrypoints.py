@@ -10,6 +10,13 @@ from tests.test_report_pipeline import make_report
 
 
 class MainEntrypointTests(unittest.TestCase):
+    def test_create_http_session_retries_get_only(self) -> None:
+        session = main.create_http_session()
+
+        adapter = session.get_adapter("https://example.com")
+
+        self.assertEqual(adapter.max_retries.allowed_methods, frozenset({"GET"}))
+
     def test_load_config_from_env_reads_runtime_and_channel_settings(self) -> None:
         with mock.patch.dict(
             os.environ,
@@ -129,6 +136,58 @@ class MainEntrypointTests(unittest.TestCase):
             exit_code = main.main()
 
         self.assertEqual(exit_code, 0)
+        self.assertIn("Partial data failures:", stderr.getvalue())
+
+    def test_main_does_not_send_when_partial_data_failure_is_fatal(self) -> None:
+        report = make_report(weather_error=True)
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with (
+            mock.patch.dict(
+                os.environ,
+                {
+                    "FAIL_ON_PARTIAL_ERROR": "true",
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "chat",
+                },
+                clear=True,
+            ),
+            mock.patch("main.collect_report_data", return_value=report),
+            mock.patch("main.send_report_to_channels") as mocked_send,
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            exit_code = main.main()
+
+        self.assertEqual(exit_code, 1)
+        mocked_send.assert_not_called()
+        self.assertIn("天气获取失败: timeout", stderr.getvalue())
+
+    def test_main_sends_when_partial_data_failure_is_allowed(self) -> None:
+        report = make_report(weather_error=True)
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with (
+            mock.patch.dict(
+                os.environ,
+                {
+                    "FAIL_ON_PARTIAL_ERROR": "false",
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "chat",
+                },
+                clear=True,
+            ),
+            mock.patch("main.collect_report_data", return_value=report),
+            mock.patch("main.send_report_to_channels", return_value=[]) as mocked_send,
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            exit_code = main.main()
+
+        self.assertEqual(exit_code, 0)
+        mocked_send.assert_called_once()
         self.assertIn("Partial data failures:", stderr.getvalue())
 
 

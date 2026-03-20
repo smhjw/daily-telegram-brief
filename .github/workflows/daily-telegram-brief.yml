@@ -6,10 +6,10 @@ permissions:
 
 on:
   schedule:
-    # Morning window around 09:36 Asia/Shanghai (01:35-02:25 UTC, every 5 minutes)
+    # Morning poll around 09:36 Asia/Shanghai (01:35-02:25 UTC, every 5 minutes)
     - cron: '35-55/5 1 * * *'
     - cron: '0-25/5 2 * * *'
-    # Evening window around 22:00 Asia/Shanghai (14:00-14:45 UTC, every 5 minutes)
+    # Evening poll around 22:00 Asia/Shanghai (14:00-14:45 UTC, every 5 minutes)
     - cron: '0-45/5 14 * * *'
   workflow_dispatch:
 
@@ -23,6 +23,9 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Guard schedule timing and dedupe sends
         id: guard
         env:
@@ -33,109 +36,7 @@ jobs:
           TZ_NAME: ${{ vars.TIMEZONE }}
           MORNING_BRIEF_TIME: ${{ vars.MORNING_BRIEF_TIME }}
           EVENING_BRIEF_TIME: ${{ vars.EVENING_BRIEF_TIME }}
-          SCHEDULE_WINDOW_MINUTES: ${{ vars.SCHEDULE_WINDOW_MINUTES }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from datetime import datetime, time, timedelta
-          from urllib.request import Request, urlopen
-          from zoneinfo import ZoneInfo
-
-          def parse_iso_utc(raw: str) -> datetime:
-              return datetime.fromisoformat(raw.replace("Z", "+00:00"))
-
-          def parse_hhmm(raw: str, default: str) -> time:
-              value = (raw or default).strip()
-              hour, minute = value.split(":")
-              return time(int(hour), int(minute))
-
-          def local_target(now_local: datetime, target_time: time) -> datetime:
-              return now_local.replace(hour=target_time.hour, minute=target_time.minute, second=0, microsecond=0)
-
-          event_name = os.environ.get("EVENT_NAME", "")
-          run_id = int(os.environ.get("RUN_ID", "0"))
-          repo = os.environ["REPO"]
-          token = os.environ["GITHUB_TOKEN"]
-          tz_name = os.environ.get("TZ_NAME", "").strip() or "Asia/Shanghai"
-          morning_brief_time = parse_hhmm(os.environ.get("MORNING_BRIEF_TIME", ""), "09:36")
-          evening_brief_time = parse_hhmm(os.environ.get("EVENING_BRIEF_TIME", ""), "22:00")
-          window_minutes = int((os.environ.get("SCHEDULE_WINDOW_MINUTES", "") or "45").strip())
-          tz = ZoneInfo(tz_name)
-          now_local = datetime.now(tz)
-
-          should_send = True
-          slot = "manual"
-          reason = "manual trigger"
-          slot_start = None
-          slot_end = None
-
-          if event_name == "schedule":
-              for candidate_slot, target_time in (
-                  ("morning", morning_brief_time),
-                  ("evening", evening_brief_time),
-              ):
-                  candidate_start = local_target(now_local, target_time)
-                  candidate_end = candidate_start + timedelta(minutes=window_minutes)
-                  if candidate_start <= now_local <= candidate_end:
-                      slot = candidate_slot
-                      slot_start = candidate_start
-                      slot_end = candidate_end
-                      break
-
-              if slot in {"morning", "evening"} and slot_start is not None and slot_end is not None:
-                  req = Request(
-                      f"https://api.github.com/repos/{repo}/actions/workflows/daily-telegram-brief.yml/runs?event=schedule&per_page=50",
-                      headers={
-                          "Authorization": f"Bearer {token}",
-                          "Accept": "application/vnd.github+json",
-                          "User-Agent": "daily-telegram-brief-guard",
-                      },
-                  )
-                  with urlopen(req, timeout=20) as resp:
-                      payload = json.load(resp)
-
-                  duplicate_run = None
-                  for run in payload.get("workflow_runs", []):
-                      if int(run.get("id", 0)) == run_id:
-                          continue
-                      if run.get("status") != "completed" or run.get("conclusion") != "success":
-                          continue
-                      started_at = run.get("run_started_at")
-                      if not started_at:
-                          continue
-                      started_local = parse_iso_utc(started_at).astimezone(tz)
-                      if started_local.date() != now_local.date():
-                          continue
-                      if slot_start <= started_local <= slot_end:
-                          duplicate_run = run
-                          break
-
-                  if duplicate_run is not None:
-                      should_send = False
-                      reason = (
-                          f"already sent in {slot} slot by run "
-                          f"#{duplicate_run.get('run_number')} at {duplicate_run.get('run_started_at')}"
-                      )
-                  else:
-                      reason = (
-                          f"{slot} slot window {slot_start.strftime('%H:%M')}"
-                          f"-{slot_end.strftime('%H:%M')} not sent yet today"
-                      )
-              else:
-                  should_send = False
-                  reason = "outside configured send windows"
-
-          print(f"guard: should_send={should_send} slot={slot} reason={reason}")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-              out.write(f"should_send={'true' if should_send else 'false'}\n")
-              out.write(f"slot={slot}\n")
-              out.write(f"reason={reason.replace(chr(10), ' ')}\n")
-          PY
-
-      - name: Checkout
-        if: steps.guard.outputs.should_send == 'true'
-        uses: actions/checkout@v4
+        run: python3 schedule_guard.py
 
       - name: Setup Python
         if: steps.guard.outputs.should_send == 'true'
